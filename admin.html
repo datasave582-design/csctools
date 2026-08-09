@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CSC Suite — Spark License Admin</title>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+  import { getDatabase, ref, get, set, update } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
+
+  const firebaseConfig = window.CSC_FIREBASE_CONFIG;
+
+  const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getDatabase(app);
+  const $=id=>document.getElementById(id);
+  const out=m=>$("out").textContent=typeof m==='string'?m:JSON.stringify(m,null,2);
+  const fail=e=>{
+    console.error(e);
+    const code=e?.code||'';
+    const msg=String(e?.message||e||'Unknown error');
+    if(code==='auth/invalid-credential'||code==='auth/invalid-login-credentials') return out('Wrong Admin email or password. Check Authentication → Users.');
+    if(code==='auth/user-not-found') return out('Admin user not found. Create the Admin user in Firebase Authentication.');
+    if(code==='auth/wrong-password') return out('Wrong Admin password.');
+    if(code==='auth/operation-not-allowed') return out('Email/Password sign-in is disabled. Enable it in Authentication → Sign-in method.');
+    if(code==='PERMISSION_DENIED'||/permission_denied/i.test(msg)) return out('Realtime Database permission denied. Check admins/<YOUR_ADMIN_UID> = true and Rules.');
+    if(/API key not valid|API_KEY_INVALID/i.test(msg)) return out('Firebase API key rejected. In Google Cloud → APIs & Services → Credentials, open this Web API key, temporarily set Application restrictions = None, and ensure Identity Toolkit API is enabled for project cricket-c3052.');
+    out(msg);
+  };
+  async function requireAdmin(){
+    const u=auth.currentUser;if(!u) throw new Error('Please sign in as Admin first.');
+    const snap=await get(ref(db,'admins/'+u.uid));
+    if(snap.val()!==true) throw new Error('This Firebase UID is not an admin. Add admins/'+u.uid+' = true in Realtime Database.');
+    return u;
+  }
+  $('login').onclick=async()=>{
+    try{
+      $('login').disabled=true; out('Signing in…');
+      await signInWithEmailAndPassword(auth,$('adminEmail').value.trim(),$('adminPass').value);
+      await requireAdmin(); out('Admin signed in successfully. UID: '+auth.currentUser.uid);
+      $('adminStatus').textContent='ADMIN: '+auth.currentUser.email;
+    }catch(e){fail(e)}finally{$('login').disabled=false}
+  };
+  $('logout').onclick=async()=>{await signOut(auth);out('Signed out.');$('adminStatus').textContent='Not signed in';};
+  $('save').onclick=async()=>{
+    try{
+      await requireAdmin();
+      const uid=$('uid').value.trim(), email=$('email').value.trim(), licenseId=$('licenseId').value.trim(), plan=$('plan').value, days=Number($('days').value||0);
+      if(!uid||!licenseId) throw new Error('Customer UID and License ID are required.');
+      if(plan!=='lifetime' && (!Number.isFinite(days)||days<1)) throw new Error('Enter valid license days.');
+      const expiryAt=plan==='lifetime'?0:Date.now()+days*86400000;
+      await set(ref(db,'licenses/'+uid),{licenseId,email,plan,expiryAt,status:'active',activeDeviceId:null,activatedAt:null,updatedAt:Date.now()});
+      out('License saved successfully.\nCustomer UID: '+uid+'\nLicense ID: '+licenseId);
+    }catch(e){fail(e)}
+  };
+  async function manage(action){
+    try{
+      await requireAdmin();const uid=$('manageUid').value.trim();if(!uid)throw new Error('Enter Customer UID.');
+      const r=ref(db,'licenses/'+uid);
+      if(action==='reset') await update(r,{activeDeviceId:null,activatedAt:null,updatedAt:Date.now()});
+      if(action==='block') await update(r,{status:'blocked',updatedAt:Date.now()});
+      if(action==='unblock') await update(r,{status:'active',updatedAt:Date.now()});
+      out(action.toUpperCase()+' completed for '+uid);
+    }catch(e){fail(e)}
+  }
+  $('reset').onclick=()=>manage('reset');$('block').onclick=()=>manage('block');$('unblock').onclick=()=>manage('unblock');
+  $('load').onclick=async()=>{try{await requireAdmin();const uid=$('manageUid').value.trim();if(!uid)throw new Error('Enter Customer UID.');const s=await get(ref(db,'licenses/'+uid));out(s.exists()?s.val():'No license found for this UID.')}catch(e){fail(e)}};
+  onAuthStateChanged(auth,u=>{if(u)$('adminStatus').textContent='SIGNED IN: '+u.email;});
+</script>
+<style>
+body{font-family:Inter,Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:30px}.card{max-width:820px;margin:auto;background:#111827;padding:24px;border-radius:20px;box-shadow:0 20px 50px #0005}h1{margin-top:0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}input,select,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #334155;background:#0b1220;color:#fff;box-sizing:border-box}button{background:#2563eb;border:0;cursor:pointer;font-weight:700}button:disabled{opacity:.6;cursor:not-allowed}.danger{background:#dc2626}.green{background:#059669}.muted{color:#94a3b8;font-size:13px}.status{padding:10px;background:#172554;border-radius:10px;margin:12px 0}.out{white-space:pre-wrap;background:#020617;padding:14px;border-radius:10px;margin-top:15px;min-height:50px}.note{background:#172554;padding:12px;border-radius:12px;font-size:13px;line-height:1.5}@media(max-width:650px){.grid{grid-template-columns:1fr}body{padding:12px}}
+</style>
+  <script src="firebase-config.js"></script>
+</head>
+<body><div class="card">
+<h1>CSC Suite — Spark License Admin</h1>
+<div class="note"><b>Important:</b> This version uses Firebase Authentication + Realtime Database only. No Blaze, Cloud Functions or paid server is required. Create customer Email/Password users in Authentication first. Your Admin UID must exist at <b>admins/YOUR_UID = true</b>.</div>
+<div class="status" id="adminStatus">Not signed in</div>
+<div class="grid"><input id="adminEmail" type="email" placeholder="Admin email"><input id="adminPass" type="password" placeholder="Admin password"></div>
+<div class="grid"><button id="login">Admin Login</button><button id="logout">Logout</button></div>
+<hr>
+<input id="uid" placeholder="Customer Firebase UID"><input id="email" type="email" placeholder="Customer email (for display)"><input id="licenseId" placeholder="License ID e.g. CSC-2026-001">
+<div class="grid"><select id="plan"><option value="lifetime">Lifetime</option><option value="yearly">1 Year</option><option value="custom">Custom Days</option></select><input id="days" type="number" min="1" value="30" placeholder="Days"></div>
+<button id="save" class="green">Create / Update License</button>
+<hr>
+<input id="manageUid" placeholder="Customer UID for management">
+<div class="grid"><button id="load">View License</button><button id="reset">Reset Device</button></div>
+<div class="grid"><button id="block" class="danger">Block License</button><button id="unblock" class="green">Unblock License</button></div>
+<div id="out" class="out">Not connected.</div>
+<p class="muted">Developer contact: +91 93238 838</p>
+</div></body></html>
