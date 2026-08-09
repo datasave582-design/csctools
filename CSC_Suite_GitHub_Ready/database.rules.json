@@ -1,0 +1,20 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+        ".validate": "newData.isBoolean()"
+      }
+    },
+    "licenses": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true || (auth != null && auth.uid === $uid && data.exists() && newData.exists() && data.child('licenseId').val() === newData.child('licenseId').val() && data.child('email').val() === newData.child('email').val() && data.child('plan').val() === newData.child('plan').val() && data.child('expiryAt').val() === newData.child('expiryAt').val() && data.child('status').val() === newData.child('status').val() && data.child('activeDeviceId').val() === null && newData.child('activeDeviceId').isString() && newData.child('activatedAt').isNumber())",
+        ".validate": "newData.hasChildren(['licenseId','email','plan','expiryAt','status','activeDeviceId','activatedAt']) && newData.child('licenseId').isString() && newData.child('email').isString() && (newData.child('plan').val() === 'lifetime' || newData.child('plan').val() === 'yearly' || newData.child('plan').val() === 'custom') && newData.child('expiryAt').isNumber() && (newData.child('status').val() === 'active' || newData.child('status').val() === 'blocked') && (newData.child('activeDeviceId').val() === null || (newData.child('activeDeviceId').isString() && newData.child('activeDeviceId').val().length >= 16 && newData.child('activeDeviceId').val().length <= 200)) && (newData.child('activatedAt').val() === null || newData.child('activatedAt').isNumber())"
+      }
+    }
+  }
+}
